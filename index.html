@@ -10,7 +10,17 @@
     />
     <script type="module" crossorigin src="./index-oxRSw0n0.js"></script>
     <link rel="stylesheet" crossorigin href="./index-BDMcAYr-.css">
-  </head>
+  
+<style>
+.visitor-stats{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:16px 32px;padding:24px 20px;margin:0 auto;border-top:1px solid rgba(128,128,128,.25);font:inherit}
+.visitor-stats>div{display:flex;align-items:center;gap:9px}
+.visitor-stats strong{font-size:1.25rem;font-variant-numeric:tabular-nums}
+.visitor-stats span:not(.visitor-dot){font-size:.9rem;opacity:.75}
+.visitor-dot{width:8px;height:8px;border-radius:50%;background:#45c989}
+.visitor-stats small{flex-basis:100%;text-align:center;opacity:.6;font-size:.75rem}
+@media(max-width:480px){.visitor-stats{gap:12px 20px;padding:20px 12px}.visitor-stats small{line-height:1.5}}
+</style>
+</head>
   <body>
     <div id="app">
       <header class="topbar">
@@ -32,6 +42,12 @@
         </button>
       </header>
       <main id="view"></main>
+
+      <section class="visitor-stats" aria-label="Website visitors">
+        <div><span class="visitor-dot" aria-hidden="true"></span><strong id="visitors-online">—</strong><span>Online now</span></div>
+        <div><strong id="visitors-total">—</strong><span>Total visits</span></div>
+        <small id="visitors-status" role="status">Connecting to live visitor counts…</small>
+      </section>
       <footer>
         <a class="brand" href="#home">SG0HANN</a>
         <span>OG Fortnite. Tutorials. Gameplay.</span>
@@ -47,5 +63,50 @@
         <button class="button secondary" id="close-dialog">Close video</button>
       </dialog>
     </div>
-  </body>
+  <script>
+
+(() => {
+ const endpoint="https://stycqnvmfkhztgvuxjph.supabase.co/functions/v1/visitors";
+ const publicKey="sb_publishable_HSUEgxZCV0Az0Q0JeXIr3A_3ZJXS1pW";
+ const online=document.getElementById("visitors-online");
+ const total=document.getElementById("visitors-total");
+ const status=document.getElementById("visitors-status");
+ const slot="sg0hann-visit-v1";
+ let fallbackId=crypto.randomUUID(), busy=false;
+ const session=()=>{
+  const now=Date.now();
+  try {
+   let saved=JSON.parse(localStorage.getItem(slot)||"null");
+   if(!saved || !/^[0-9a-f-]{36}$/i.test(saved.id||"") || now-saved.seen>1800000) saved={id:crypto.randomUUID()};
+   saved.seen=now;localStorage.setItem(slot,JSON.stringify(saved));return saved.id;
+  }catch{return fallbackId;}
+ };
+ async function update() {
+  if(busy||document.hidden) return;
+  busy=true;
+  try {
+   const response=await fetch(endpoint,{
+    method:"POST",headers:{"Content-Type":"application/json","apikey":publicKey},
+    body:JSON.stringify({session:session()}),signal:AbortSignal.timeout(10000)
+   });
+   if(!response.ok) throw new Error("Unavailable");
+   const data=await response.json();
+   if(!Number.isSafeInteger(data.online)||!Number.isSafeInteger(data.total))throw new Error("Invalid counts");
+   online.textContent=data.online.toLocaleString();
+   total.textContent=data.total.toLocaleString();
+   status.textContent="Updates every 30 seconds · Visits counted since this counter launched";
+  }catch{
+   online.textContent="—";
+   status.textContent="Live counts temporarily unavailable · Retrying automatically";
+  }finally{busy=false;}
+ }
+ update();
+ setInterval(update,30000);
+ document.addEventListener("visibilitychange",()=>{if(!document.hidden)update();});
+ window.addEventListener("online",update);
+})();
+
+</script>
+</body>
 </html>
+
