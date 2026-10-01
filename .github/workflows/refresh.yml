@@ -1,0 +1,48 @@
+name: Refresh creator content
+on:
+  schedule:
+    - cron: '17 * * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: content-refresh
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Refresh public YouTube and Fortnite.gg data
+        run: python refresh.py .
+      - name: Save updated content
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add content.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Refresh YouTube and Fortnite.gg content'
+            git push
+          fi
+      - uses: actions/configure-pages@v5
+      - name: Prepare website
+        run: |
+          mkdir _site
+          cp index.html index-*.js index-*.css albania.svg logo.jpg content.json _site/
+          touch _site/.nojekyll
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - name: Deploy refreshed website
+        id: deployment
+        uses: actions/deploy-pages@v4
