@@ -75,7 +75,11 @@ def run():
         successes += 1
         print('Creator updated')
     except Exception as e: print('Creator retained last good data:',e)
-    if not successes: raise RuntimeError('All sources failed; no data replaced')
-    PATH.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+    if not successes:
+        print('::warning::All public sources failed; deploying the last good content without replacing it')
+        return
+    temporary = PATH.with_suffix('.tmp')
+    temporary.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+    temporary.replace(PATH)
 
 if __name__ == '__main__': run()
