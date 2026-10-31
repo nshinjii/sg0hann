@@ -27,6 +27,31 @@ def compact(n):
     if n < 1_000_000: return f'{n // 1000}K'
     return (f'{math.floor(n / 100_000) / 10:.1f}'.rstrip('0').rstrip('.')) + 'M'
 
+AGO = {'sec': 1, 'second': 1, 'min': 60, 'minute': 60, 'hr': 3600, 'hour': 3600, 'day': 86400,
+       'week': 604800, 'month': 2629800, 'year': 31557600}
+
+def ago_to_date(text, now):
+    """'2 hr ago' / '4 days ago' / 'Streamed 1 week ago' -> approximate ISO date."""
+    m = re.search(r'(\d+)\s*(sec|second|min|minute|hr|hour|day|week|month|year)s?\s+ago', text)
+    if not m: return ''
+    when = now.timestamp() - int(m.group(1)) * AGO[m.group(2)]
+    return datetime.fromtimestamp(when, timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+def parse_videos_tab(page, now):
+    """Uploads on the public Videos tab: id, title, views, relative date, duration."""
+    out = []
+    for chunk in page.split('"lockupViewModel":{')[1:]:
+        vid = re.search(r'"contentId":"([\w-]{11})"', chunk) or re.search(r'"watchEndpoint":\{"videoId":"([\w-]{11})"', chunk)
+        title = re.search(r'"lockupMetadataViewModel":\{"title":\{"content":"((?:[^"\\]|\\.)*)"', chunk)
+        views = re.search(r'"text":\{"content":"([^"]+)"\},"accessibilityLabel":"[^"]*views?"', chunk)
+        when = re.search(r'"text":\{"content":"([^"]*ago)"\}', chunk)
+        dur = re.search(r'"thumbnailBadgeViewModel":\{"text":"(\d+:\d{2}(?::\d{2})?)"', chunk)
+        if not (vid and title): continue
+        out.append({'id': vid.group(1), 'title': json.loads('"' + title.group(1) + '"'),
+                    'views': short(views.group(1)) if views else '', 'date': ago_to_date(when.group(1), now) if when else '',
+                    'duration': dur.group(1) if dur else ''})
+    return out
+
 def short(text):
     """'2.1k' / '12k' / '263' from YouTube's page -> '2.1K' / '12K' / '263'."""
     text = text.strip().replace(',', '')
@@ -84,20 +109,31 @@ def run():
         successes += 1
         print('Channel updated:', data['channel'])
     except Exception as e: print('Channel totals retained last good data:', e)
-    # View counts for the latest 30 uploads from the public Videos tab (RSS only covers 15).
+    # Latest 30 uploads from the public Videos tab: refreshes view counts (RSS only covers 15)
+    # and adds any new upload the RSS feed missed, so the site never falls behind.
     try:
         page = fetch('https://www.youtube.com/channel/' + CHANNEL + '/videos', browser=True)
-        seen = 0
+        tab = parse_videos_tab(page, datetime.now(timezone.utc))
+        if not tab: raise ValueError('No uploads found on the Videos tab')
         by_id = {v['id']: v for v in data['videos']}
-        for chunk in page.split('"lockupViewModel":{')[1:]:
-            vid = re.search(r'"contentId":"([\w-]{11})"', chunk)
-            vw = re.search(r'"text":\{"content":"([^"]+)"\},"accessibilityLabel":"[^"]*views?"', chunk)
-            if vid and vw and vid.group(1) in by_id:
-                by_id[vid.group(1)]['views'] = short(vw.group(1)); seen += 1
-        if not seen: raise ValueError('No view counts found on the Videos tab')
+        added = 0
+        for item in tab:
+            old = by_id.get(item['id'])
+            if old:
+                if item['views']: old['views'] = item['views']
+                if item['duration'] and not old.get('duration'): old['duration'] = item['duration']
+            elif item['date']:
+                t = item['title']
+                by_id[item['id']] = {'id': item['id'], 'title': t, 'date': item['date'],
+                    'category': 'Tutorials' if re.search('how', t, re.I) else 'Gameplay' if re.search('keyboard|asmr|gameplay', t, re.I) else 'Videos',
+                    'views': item['views'], 'duration': item['duration'], 'project': 'SG0HANN',
+                    'image': 'https://i.ytimg.com/vi/' + item['id'] + '/hqdefault.jpg'}
+                added += 1
+        data['videos'] = sorted(by_id.values(), key=lambda v: v.get('date', ''), reverse=True)
+        data['youtubeUpdatedAt'] = now
         successes += 1
-        print('View counts updated for', seen, 'uploads')
-    except Exception as e: print('Video view counts retained last good data:', e)
+        print('Videos tab: refreshed', len(tab), 'uploads, added', added, 'new')
+    except Exception as e: print('Videos tab retained last good data:', e)
     # Keep every stored view count in the same short format.
     for v in data['videos']:
         raw = str(v.get('views', '')).replace(',', '')
