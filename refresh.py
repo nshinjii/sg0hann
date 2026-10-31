@@ -94,8 +94,8 @@ def run():
         data['videos'] = sorted(by_id.values(), key=lambda v:v.get('date',''), reverse=True)
         data['youtubeUpdatedAt'] = now
         successes += 1
-        print('YouTube updated:', len(data['videos']), 'videos')
-    except Exception as e: print('YouTube retained last good data:',e)
+        print('::notice::YouTube RSS read %d entries; newest %s' % (len(entries), entries[0].findtext('yt:videoId', namespaces=ns)))
+    except Exception as e: print('::warning::YouTube RSS kept last good data:', e)
     # Channel totals (subscribers, uploads, total views) from the public About page.
     try:
         page = fetch('https://www.youtube.com/channel/' + CHANNEL + '/about', browser=True)
@@ -107,8 +107,8 @@ def run():
         data['channel'] = {'subscribers': short(subs.group(1)), 'uploads': uploads.group(1).replace(',', ''),
             'views': (f'{total // 1000:,}K+' if total < 1_000_000 else compact(total) + '+'), 'viewsExact': total, 'updatedAt': now}
         successes += 1
-        print('Channel updated:', data['channel'])
-    except Exception as e: print('Channel totals retained last good data:', e)
+        print('::notice::Channel totals:', data['channel'])
+    except Exception as e: print('::warning::Channel totals kept last good data:', e)
     # Latest 30 uploads from the public Videos tab: refreshes view counts (RSS only covers 15)
     # and adds any new upload the RSS feed missed, so the site never falls behind.
     try:
@@ -132,8 +132,10 @@ def run():
         data['videos'] = sorted(by_id.values(), key=lambda v: v.get('date', ''), reverse=True)
         data['youtubeUpdatedAt'] = now
         successes += 1
-        print('Videos tab: refreshed', len(tab), 'uploads, added', added, 'new')
-    except Exception as e: print('Videos tab retained last good data:', e)
+        print('::notice::Videos tab read %d uploads (%d with dates), added %d new. First: %s' % (len(tab), sum(1 for x in tab if x['date']), added, tab[0]))
+    except Exception as e:
+        snippet = re.sub(r'\s+', ' ', page[:200]) if 'page' in locals() and isinstance(page, str) else ''
+        print('::warning::Videos tab kept last good data:', e, '| lockups:', page.count('lockupViewModel') if 'page' in locals() and isinstance(page, str) else '-', '| videoRenderer:', page.count('"videoRenderer"') if 'page' in locals() and isinstance(page, str) else '-', '|', snippet)
     # Keep every stored view count in the same short format.
     for v in data['videos']:
         raw = str(v.get('views', '')).replace(',', '')
