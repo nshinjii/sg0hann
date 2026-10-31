@@ -44,7 +44,7 @@ def parse_videos_tab(page, now):
         vid = re.search(r'"contentId":"([\w-]{11})"', chunk) or re.search(r'"watchEndpoint":\{"videoId":"([\w-]{11})"', chunk)
         title = re.search(r'"lockupMetadataViewModel":\{"title":\{"content":"((?:[^"\\]|\\.)*)"', chunk)
         views = re.search(r'"text":\{"content":"([^"]+)"\},"accessibilityLabel":"[^"]*views?"', chunk)
-        when = re.search(r'"text":\{"content":"([^"]*ago)"\}', chunk)
+        when = re.search(r'"content":"([^"]*?\d+\s*(?:sec|second|min|minute|hr|hour|day|week|month|year)s?\s+ago)"', chunk)
         dur = re.search(r'"thumbnailBadgeViewModel":\{"text":"(\d+:\d{2}(?::\d{2})?)"', chunk)
         if not (vid and title): continue
         out.append({'id': vid.group(1), 'title': json.loads('"' + title.group(1) + '"'),
@@ -133,6 +133,9 @@ def run():
         data['youtubeUpdatedAt'] = now
         successes += 1
         print('::notice::Videos tab read %d uploads (%d with dates), added %d new. First: %s' % (len(tab), sum(1 for x in tab if x['date']), added, tab[0]))
+        if not any(x['date'] for x in tab):
+            i = page.find('"metadataParts"')
+            print('::warning::Videos tab dates not recognised:', re.sub(r'"(url|clickTrackingParams|trackingParams)":"[^"]*"', '', page[i:i + 600]))
     except Exception as e:
         snippet = re.sub(r'\s+', ' ', page[:200]) if 'page' in locals() and isinstance(page, str) else ''
         print('::warning::Videos tab kept last good data:', e, '| lockups:', page.count('lockupViewModel') if 'page' in locals() and isinstance(page, str) else '-', '| videoRenderer:', page.count('"videoRenderer"') if 'page' in locals() and isinstance(page, str) else '-', '|', snippet)
