@@ -27,12 +27,14 @@ def compact(n):
     if n < 1_000_000: return f'{n // 1000}K'
     return (f'{math.floor(n / 100_000) / 10:.1f}'.rstrip('0').rstrip('.')) + 'M'
 
-AGO = {'sec': 1, 'second': 1, 'min': 60, 'minute': 60, 'hr': 3600, 'hour': 3600, 'day': 86400,
-       'week': 604800, 'month': 2629800, 'year': 31557600}
+AGO = {'sec': 1, 'second': 1, 's': 1, 'min': 60, 'minute': 60, 'm': 60, 'hr': 3600, 'hour': 3600, 'h': 3600,
+       'day': 86400, 'd': 86400, 'week': 604800, 'w': 604800, 'month': 2629800, 'mo': 2629800,
+       'year': 31557600, 'y': 31557600}
+UNITS = r'(second|minute|month|hour|week|year|sec|min|day|hr|mo|s|m|h|d|w|y)'
 
 def ago_to_date(text, now):
     """'2 hr ago' / '4 days ago' / 'Streamed 1 week ago' -> approximate ISO date."""
-    m = re.search(r'(\d+)\s*(sec|second|min|minute|hr|hour|day|week|month|year)s?\s+ago', text)
+    m = re.search(r'(\d+)\s*' + UNITS + r's?\s+ago', text)
     if not m: return ''
     when = now.timestamp() - int(m.group(1)) * AGO[m.group(2)]
     return datetime.fromtimestamp(when, timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
@@ -44,7 +46,8 @@ def parse_videos_tab(page, now):
         vid = re.search(r'"contentId":"([\w-]{11})"', chunk) or re.search(r'"watchEndpoint":\{"videoId":"([\w-]{11})"', chunk)
         title = re.search(r'"lockupMetadataViewModel":\{"title":\{"content":"((?:[^"\\]|\\.)*)"', chunk)
         views = re.search(r'"text":\{"content":"([^"]+)"\},"accessibilityLabel":"[^"]*views?"', chunk)
-        when = re.search(r'"content":"([^"]*?\d+\s*(?:sec|second|min|minute|hr|hour|day|week|month|year)s?\s+ago)"', chunk)
+        when = (re.search(r'"accessibilityLabel":"([^"]*?\d+\s*' + UNITS + r's?\s+ago)"', chunk)
+                or re.search(r'"content":"([^"]*?\d+\s*' + UNITS + r's?\s+ago)"', chunk))
         dur = re.search(r'"thumbnailBadgeViewModel":\{"text":"(\d+:\d{2}(?::\d{2})?)"', chunk)
         if not (vid and title): continue
         out.append({'id': vid.group(1), 'title': json.loads('"' + title.group(1) + '"'),
